@@ -1,0 +1,11 @@
+{
+  "date": "2025-02-10",
+  "expenses": [
+    {
+      "amount": 5,
+      "category": "gas",
+      "description": "I spent $5 on gas yesterday, $10 on milk",
+      "date": "2025-02-10T16:39:37.306Z"
+    }
+  ]
+}

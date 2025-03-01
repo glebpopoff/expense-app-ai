@@ -1,0 +1,23 @@
+{
+  "date": "2025-02-11",
+  "expenses": [
+    {
+      "amount": 50,
+      "category": "gas",
+      "description": "I spent $50 on gas today",
+      "date": "2025-02-11T16:39:18.329Z"
+    },
+    {
+      "amount": 50,
+      "category": "other",
+      "description": "Spent $50 at Walmart",
+      "date": "2025-02-11T16:48:11.636Z"
+    },
+    {
+      "amount": 150,
+      "category": "other",
+      "description": "Spent $150 at Target",
+      "date": "2025-02-11T16:48:22.921Z"
+    }
+  ]
+}
