@@ -280,6 +280,11 @@ app.post('/api/query', async (req, res) => {
       startDate.setHours(0, 0, 0, 0);
     } else if (lowerQuery.includes('this month')) {
       startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    } else if (lowerQuery.includes('last month')) {
+      endDate.setDate(0); // Last day of previous month
+      startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    } else if (lowerQuery.includes('year')) {
+      startDate = new Date(endDate.getFullYear(), 0, 1);
     }
 
     const expenses = await loadExpensesInRange(startDate, endDate);
@@ -294,60 +299,139 @@ app.post('/api/query', async (req, res) => {
     
     let answer = '';
     
-    // Handle time-based queries
-    if (lowerQuery.includes('today')) {
-      const todayTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-      answer = `Today's total spending: $${todayTotal.toFixed(2)}. `;
+    // Handle specific category queries (e.g., "How much did I spend on gas?")
+    const categories = Object.keys(analysis.categorySummary);
+    let matchedCategory = null;
+    
+    // Check for category mentions in the query
+    for (const category of categories) {
+      if (lowerQuery.includes(category.toLowerCase())) {
+        matchedCategory = category;
+        break;
+      }
+    }
+
+    // Also check for keywords that might map to categories
+    const categoryKeywords = {
+      'transportation': ['gas', 'fuel', 'uber', 'lyft', 'taxi', 'bus', 'train'],
+      'food': ['restaurant', 'dining', 'lunch', 'dinner', 'breakfast', 'meal'],
+      'groceries': ['grocery', 'supermarket', 'market', 'food store'],
+      'utilities': ['electricity', 'water', 'internet', 'phone', 'bill'],
+      'entertainment': ['movie', 'concert', 'show', 'game', 'streaming'],
+      'shopping': ['clothes', 'shoes', 'amazon', 'store'],
+      'health': ['doctor', 'medicine', 'pharmacy', 'medical'],
+      'housing': ['rent', 'mortgage', 'maintenance', 'repair']
+    };
+
+    if (!matchedCategory) {
+      for (const [category, keywords] of Object.entries(categoryKeywords)) {
+        if (keywords.some(keyword => lowerQuery.includes(keyword))) {
+          matchedCategory = category;
+          break;
+        }
+      }
+    }
+
+    // If a specific category is mentioned, provide detailed category analysis
+    if (matchedCategory) {
+      const categoryExpenses = expenses.filter(exp => exp.category.toLowerCase() === matchedCategory.toLowerCase());
+      const totalAmount = categoryExpenses.reduce((sum, exp) => sum + exp.amount, 0);
       
-      // Add category breakdown for today
-      const categories = {};
-      expenses.forEach(exp => {
-        categories[exp.category] = (categories[exp.category] || 0) + exp.amount;
-      });
+      answer = `You spent $${totalAmount.toFixed(2)} on ${matchedCategory}`;
       
-      if (Object.keys(categories).length > 0) {
-        answer += 'Breakdown by category: ';
-        Object.entries(categories).forEach(([category, amount]) => {
+      // Add time context if specified
+      if (lowerQuery.includes('today')) {
+        answer += ' today';
+      } else if (lowerQuery.includes('this week')) {
+        answer += ' this week';
+      } else if (lowerQuery.includes('this month')) {
+        answer += ' this month';
+      } else if (lowerQuery.includes('last month')) {
+        answer += ' last month';
+      } else if (lowerQuery.includes('year')) {
+        answer += ' this year';
+      } else {
+        answer += ' in the last 30 days';
+      }
+      
+      // Add frequency and average
+      if (categoryExpenses.length > 0) {
+        const avgPerExpense = totalAmount / categoryExpenses.length;
+        answer += `.\nYou made ${categoryExpenses.length} ${matchedCategory} expenses, averaging $${avgPerExpense.toFixed(2)} per expense`;
+        
+        // Add comparison to overall spending
+        const percentageOfTotal = (totalAmount / analysis.totalSpent * 100).toFixed(1);
+        answer += `.\nThis represents ${percentageOfTotal}% of your total spending`;
+        
+        // Add recent transactions
+        const recentExpenses = categoryExpenses
+          .sort((a, b) => new Date(b.date) - new Date(a.date))
+          .slice(0, 3);
+        
+        if (recentExpenses.length > 0) {
+          answer += '.\n\nRecent transactions:';
+          recentExpenses.forEach(exp => {
+            const date = new Date(exp.date).toLocaleDateString();
+            answer += `\n- $${exp.amount.toFixed(2)} on ${date} (${exp.description})`;
+          });
+        }
+      }
+    } else {
+      // Handle time-based queries
+      if (lowerQuery.includes('today')) {
+        const todayTotal = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+        answer = `Today's total spending: $${todayTotal.toFixed(2)}. `;
+        
+        // Add category breakdown for today
+        const categories = {};
+        expenses.forEach(exp => {
+          categories[exp.category] = (categories[exp.category] || 0) + exp.amount;
+        });
+        
+        if (Object.keys(categories).length > 0) {
+          answer += 'Breakdown by category: ';
+          Object.entries(categories).forEach(([category, amount]) => {
+            answer += `${category}: $${amount.toFixed(2)}, `;
+          });
+          answer = answer.slice(0, -2);
+        }
+      } else if (lowerQuery.includes('this week')) {
+        answer = `This week's total spending: $${analysis.totalSpent.toFixed(2)}. `;
+        answer += `Daily average: $${analysis.dailyAverage.toFixed(2)}. `;
+      } else if (lowerQuery.includes('total') || lowerQuery.includes('spent')) {
+        answer = `Total spending: $${analysis.totalSpent.toFixed(2)}. `;
+        answer += `Daily average: $${analysis.dailyAverage.toFixed(2)}. `;
+      }
+      
+      // Add AI insights based on query type
+      if (aiAnalysis) {
+        if (lowerQuery.includes('pattern') || lowerQuery.includes('trend')) {
+          answer += `\nSpending Pattern: ${aiAnalysis.pattern}`;
+        }
+        if (lowerQuery.includes('save') || lowerQuery.includes('savings')) {
+          answer += `\nSavings Suggestions: ${aiAnalysis.savings}`;
+        }
+        if (lowerQuery.includes('unusual') || lowerQuery.includes('strange')) {
+          answer += `\nUnusual Expenses: ${aiAnalysis.unusual}`;
+        }
+      }
+      
+      // Add category breakdown if requested
+      if (lowerQuery.includes('category') || lowerQuery.includes('breakdown')) {
+        answer += '\nCategory breakdown: ';
+        Object.entries(analysis.categorySummary).forEach(([category, amount]) => {
           answer += `${category}: $${amount.toFixed(2)}, `;
         });
         answer = answer.slice(0, -2);
       }
-    } else if (lowerQuery.includes('this week')) {
-      answer = `This week's total spending: $${analysis.totalSpent.toFixed(2)}. `;
-      answer += `Daily average: $${analysis.dailyAverage.toFixed(2)}. `;
-    } else if (lowerQuery.includes('total') || lowerQuery.includes('spent')) {
-      answer = `Total spending: $${analysis.totalSpent.toFixed(2)}. `;
-      answer += `Daily average: $${analysis.dailyAverage.toFixed(2)}. `;
-    }
-    
-    // Add AI insights based on query type
-    if (aiAnalysis) {
-      if (lowerQuery.includes('pattern') || lowerQuery.includes('trend')) {
-        answer += `\nSpending Pattern: ${aiAnalysis.pattern}`;
-      }
-      if (lowerQuery.includes('save') || lowerQuery.includes('savings')) {
-        answer += `\nSavings Suggestions: ${aiAnalysis.savings}`;
-      }
-      if (lowerQuery.includes('unusual') || lowerQuery.includes('strange')) {
-        answer += `\nUnusual Expenses: ${aiAnalysis.unusual}`;
-      }
-    }
-    
-    // Add category breakdown if requested
-    if (lowerQuery.includes('category') || lowerQuery.includes('breakdown')) {
-      answer += '\nCategory breakdown: ';
-      Object.entries(analysis.categorySummary).forEach(([category, amount]) => {
-        answer += `${category}: $${amount.toFixed(2)}, `;
-      });
-      answer = answer.slice(0, -2);
-    }
 
-    // If no specific answer was generated, provide a general summary with AI insights
-    if (!answer && aiAnalysis) {
-      answer = `Total spending: $${analysis.totalSpent.toFixed(2)}. `;
-      answer += `Daily average: $${analysis.dailyAverage.toFixed(2)}.\n`;
-      answer += `Spending Pattern: ${aiAnalysis.pattern}\n`;
-      answer += `Savings Suggestions: ${aiAnalysis.savings}`;
+      // If no specific answer was generated, provide a general summary with AI insights
+      if (!answer && aiAnalysis) {
+        answer = `Total spending: $${analysis.totalSpent.toFixed(2)}. `;
+        answer += `Daily average: $${analysis.dailyAverage.toFixed(2)}.\n`;
+        answer += `Spending Pattern: ${aiAnalysis.pattern}\n`;
+        answer += `Savings Suggestions: ${aiAnalysis.savings}`;
+      }
     }
 
     console.log('Generated answer:', answer);
